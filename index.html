@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Advanced Crypto Trading Simulator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+
+<style>
+:root{
+  --bg:#f4f6f9;
+  --card:#ffffff;
+  --text:#000;
+}
+.dark{
+  --bg:#0e1117;
+  --card:#161b22;
+  --text:#fff;
+}
+body{
+  margin:0;
+  font-family:Arial;
+  background:var(--bg);
+  color:var(--text);
+}
+header{
+  background:#2563eb;
+  color:#fff;
+  padding:10px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.grid{
+  display:grid;
+  grid-template-columns:260px 1fr 360px;
+  gap:10px;
+  padding:10px;
+}
+.card{
+  background:var(--card);
+  padding:10px;
+  border-radius:8px;
+}
+button,input,select{
+  width:100%;
+  padding:8px;
+  margin-top:6px;
+}
+.buy{background:#22c55e;color:#fff;border:none;}
+.sell{background:#ef4444;color:#fff;border:none;}
+.auto{background:#f59e0b;color:#fff;border:none;}
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:12px;
+}
+th,td{
+  border:1px solid #888;
+  padding:4px;
+  text-align:center;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <b>📊 Advanced Crypto Trading Platform</b>
+  <button onclick="toggleTheme()">🌙</button>
+</header>
+
+<div class="grid">
+
+<!-- LEFT -->
+<div class="card">
+  <h3>Market</h3>
+  <select id="pair" onchange="loadChart()">
+    <option value="BINANCE:BTCUSDT">BTC / USDT</option>
+    <option value="BINANCE:ETHUSDT">ETH / USDT</option>
+  </select>
+
+  <p>Price: <b id="price">0</b></p>
+  <p>Balance: $<b id="balance">10000</b></p>
+
+  <h3>Auto Trading</h3>
+  <button class="auto" onclick="toggleAuto()">
+    AUTO: <span id="autoState">OFF</span>
+  </button>
+  <p>Strategy: EMA 9 / EMA 21</p>
+</div>
+
+<!-- CENTER -->
+<div class="card">
+  <div id="chart" style="height:500px;"></div>
+</div>
+
+<!-- RIGHT -->
+<div class="card">
+  <h3>Manual Trade</h3>
+  <input id="lot" type="number" value="1" placeholder="Lot Size"/>
+  <input id="sl" placeholder="Stop Loss"/>
+  <input id="tp" placeholder="Take Profit"/>
+  <button class="buy" onclick="openTrade('BUY',false)">BUY</button>
+  <button class="sell" onclick="openTrade('SELL',false)">SELL</button>
+
+  <h3>Open Trades</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th><th>Entry</th><th>SL</th><th>TP</th><th>P/L</th><th>X</th>
+      </tr>
+    </thead>
+    <tbody id="trades"></tbody>
+  </table>
+</div>
+
+</div>
+
+<script>
+let price = 30000;
+let balance = 10000;
+let trades = [];
+let autoTrade = false;
+let ema9 = 0, ema21 = 0;
+let lastSignal = null;
+
+function toggleTheme(){
+  document.body.classList.toggle("dark");
+  loadChart();
+}
+
+function toggleAuto(){
+  autoTrade = !autoTrade;
+  document.getElementById("autoState").innerText = autoTrade ? "ON" : "OFF";
+}
+
+function marketTick(){
+  price += (Math.random() - 0.5) * 150;
+  calcEMA();
+  if(autoTrade) autoLogic();
+  updateTrades();
+  document.getElementById("price").innerText = price.toFixed(2);
+}
+setInterval(marketTick,2000);
+
+function calcEMA(){
+  const k9 = 2/(9+1);
+  const k21 = 2/(21+1);
+  ema9 = ema9 ? price*k9 + ema9*(1-k9) : price;
+  ema21 = ema21 ? price*k21 + ema21*(1-k21) : price;
+}
+
+function autoLogic(){
+  if(ema9 > ema21 && lastSignal !== "BUY"){
+    openTrade("BUY",true);
+    lastSignal = "BUY";
+  }
+  if(ema9 < ema21 && lastSignal !== "SELL"){
+    openTrade("SELL",true);
+    lastSignal = "SELL";
+  }
+}
+
+function openTrade(type,isAuto){
+  let sl = isAuto ? (type==="BUY"?price-200:price+200) :
+           parseFloat(document.getElementById("sl").value) || null;
+  let tp = isAuto ? (type==="BUY"?price+300:price-300) :
+           parseFloat(document.getElementById("tp").value) || null;
+  trades.push({type,entry:price,sl,tp,lot:1});
+}
+
+function pl(t){
+  let diff = price - t.entry;
+  if(t.type==="SELL") diff = -diff;
+  return diff * t.lot;
+}
+
+function updateTrades(){
+  let html="";
+  for(let i=trades.length-1;i>=0;i--){
+    let t = trades[i];
+    let profit = pl(t);
+    if(
+      (t.sl && ((t.type==="BUY" && price<=t.sl) || (t.type==="SELL" && price>=t.sl))) ||
+      (t.tp && ((t.type==="BUY" && price>=t.tp) || (t.type==="SELL" && price<=t.tp)))
+    ){
+      balance += profit;
+      trades.splice(i,1);
+      continue;
+    }
+    html += `
+      <tr>
+        <td>${t.type}</td>
+        <td>${t.entry.toFixed(1)}</td>
+        <td>${t.sl||"-"}</td>
+        <td>${t.tp||"-"}</td>
+        <td>${profit.toFixed(1)}</td>
+        <td><button onclick="trades.splice(${i},1)">X</button></td>
+      </tr>`;
+  }
+  document.getElementById("trades").innerHTML = html;
+  document.getElementById("balance").innerText = balance.toFixed(2);
+}
+
+function loadChart(){
+  document.getElementById("chart").innerHTML="";
+  new TradingView.widget({
+    container_id:"chart",
+    symbol:document.getElementById("pair").value,
+    interval:"15",
+    width:"100%",
+    height:"500",
+    theme:document.body.classList.contains("dark")?"dark":"light"
+  });
+}
+loadChart();
+</script>
+
+</body>
+</html>
